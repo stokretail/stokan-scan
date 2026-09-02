@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Scan Stok — Stokan Retail</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+<style>
+  :root{
+    --bg:#14171A; --surface:#1E2226; --surface-2:#262B30; --border:#33393E;
+    --text:#F2F1EC; --text-dim:#9BA0A6; --accent:#FFB020; --accent-dim:#4A3A16;
+    --success:#38C172; --success-dim:#173D26; --danger:#E5484D; --danger-dim:#3D1416;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0; background:var(--bg); color:var(--text); font-family:'Inter',system-ui,sans-serif; -webkit-tap-highlight-color:transparent;}
+  .wrap{max-width:480px; margin:0 auto; padding:20px 16px 40px; min-height:100vh;}
+  header{display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;}
+  header .title{font-size:17px; font-weight:600;}
+  header .sub{font-size:12px; color:var(--text-dim); margin-top:2px;}
+  #settingsBtn{background:var(--surface); border:1px solid var(--border); color:var(--text-dim); width:38px; height:38px; border-radius:10px; font-size:16px; cursor:pointer;}
+  .card{background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:18px;}
+  .hidden{display:none !important;}
+  #setupScreen label{font-size:13px; color:var(--text-dim); display:block; margin-bottom:8px;}
+  #setupScreen input{width:100%; background:var(--surface-2); border:1px solid var(--border); color:var(--text); padding:12px 14px; border-radius:10px; font-size:14px; font-family:'IBM Plex Mono',monospace; margin-bottom:6px;}
+  #setupScreen .hint{font-size:12px; color:var(--text-dim); line-height:1.5; margin-bottom:16px;}
+  #setupScreen .err{font-size:12px; color:var(--danger); margin-bottom:10px; display:none;}
+  .btn-primary{width:100%; background:var(--accent); color:#241A05; border:none; font-weight:600; padding:13px; border-radius:10px; font-size:14px; cursor:pointer;}
+  #scanZone{position:relative; aspect-ratio:1/1; background:#000; border-radius:16px; overflow:hidden; margin-bottom:14px;}
+  #reader{width:100%; height:100%;}
+  #reader video{object-fit:cover; width:100% !important; height:100% !important;}
+  .frame-corner{position:absolute; width:34px; height:34px; border:3px solid var(--accent); pointer-events:none;}
+  .frame-corner.tl{top:24px; left:24px; border-right:none; border-bottom:none; border-top-left-radius:8px;}
+  .frame-corner.tr{top:24px; right:24px; border-left:none; border-bottom:none; border-top-right-radius:8px;}
+  .frame-corner.bl{bottom:24px; left:24px; border-right:none; border-top:none; border-bottom-left-radius:8px;}
+  .frame-corner.br{bottom:24px; right:24px; border-left:none; border-top:none; border-bottom-right-radius:8px;}
+  #scanIdle{position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; color:var(--text-dim); font-size:13px;}
+  .qty-row{display:flex; align-items:center; justify-content:space-between; background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:12px 14px; margin-bottom:14px;}
+  .qty-label{font-size:14px; color:var(--text-dim);}
+  .qty-control{display:flex; align-items:center; gap:14px;}
+  .qty-control button{width:34px; height:34px; border-radius:9px; border:1px solid var(--border); background:var(--surface-2); color:var(--text); font-size:18px; line-height:1; cursor:pointer;}
+  .qty-control span{font-family:'IBM Plex Mono',monospace; font-size:17px; font-weight:600; min-width:22px; text-align:center;}
+  #scanBtn{margin-bottom:18px;}
+  #resultCard{border-radius:14px; padding:16px; margin-bottom:18px; border:1px solid var(--border); background:var(--surface);}
+  #resultCard.state-success{background:var(--success-dim); border-color:var(--success);}
+  #resultCard.state-error{background:var(--danger-dim); border-color:var(--danger);}
+  #resultCard .r-label{font-size:11px; color:var(--text-dim); margin-bottom:6px;}
+  #resultCard .r-name{font-size:15px; font-weight:600; margin-bottom:8px; line-height:1.4;}
+  #resultCard .r-code{font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--text-dim); margin-bottom:4px;}
+  #resultCard .r-stat{font-size:13px; color:var(--text-dim);}
+  .section-title{font-size:13px; font-weight:600; color:var(--text-dim); margin:0 0 10px;}
+  .today-badge{display:inline-flex; align-items:baseline; gap:6px; background:var(--surface-2); border-radius:10px; padding:8px 12px; font-size:13px; color:var(--text-dim); margin-bottom:14px;}
+  .today-badge b{font-size:16px; color:var(--text); font-family:'IBM Plex Mono',monospace;}
+  #historyList{display:flex; flex-direction:column; gap:8px;}
+  .log-row{display:flex; justify-content:space-between; align-items:center; gap:10px; background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:10px 12px;}
+  .log-row .l-name{font-size:13px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .log-row .l-meta{font-size:11px; color:var(--text-dim); font-family:'IBM Plex Mono',monospace; margin-top:2px;}
+  .log-row .l-dot{width:7px; height:7px; border-radius:50%; flex-shrink:0;}
+  .log-row.ok .l-dot{background:var(--success);}
+  .log-row.fail .l-dot{background:var(--danger);}
+  .empty-log{font-size:13px; color:var(--text-dim); text-align:center; padding:20px 0;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <div class="title">Scan stok — Stokan Retail</div>
+      <div class="sub" id="headerSub">Belum terhubung</div>
+    </div>
+    <button id="settingsBtn" aria-label="Pengaturan">&#9881;</button>
+  </header>
+
+  <div id="setupScreen" class="card">
+    <label for="urlInput">Alamat Apps Script Web App</label>
+    <input id="urlInput" type="text" placeholder="https://script.google.com/macros/s/xxxxx/exec" />
+    <div class="err" id="urlErr">Masukkan alamat yang valid, diawali https://</div>
+    <div class="hint">Alamat ini didapat setelah deploy Apps Script (kode Code.gs) di Google Sheets kamu. Sekali disimpan, tidak perlu diisi ulang di HP ini.</div>
+    <button class="btn-primary" id="saveUrlBtn">Simpan dan mulai</button>
+  </div>
+
+  <div id="mainScreen" class="hidden">
+    <div id="scanZone">
+      <div id="reader"></div>
+      <div id="scanIdle"><span>Kamera belum aktif</span></div>
+      <div class="frame-corner tl"></div><div class="frame-corner tr"></div>
+      <div class="frame-corner bl"></div><div class="frame-corner br"></div>
+    </div>
+    <div class="qty-row">
+      <span class="qty-label">Jumlah keluar</span>
+      <div class="qty-control">
+        <button type="button" id="qtyMinus">&minus;</button>
+        <span id="qtyValue">1</span>
+        <button type="button" id="qtyPlus">&plus;</button>
+      </div>
+    </div>
+    <button class="btn-primary" id="scanBtn">Mulai scan</button>
+    <div id="resultCard" class="hidden">
+      <div class="r-label" id="rLabel">Hasil scan</div>
+      <div class="r-name" id="rName">—</div>
+      <div class="r-code" id="rCode"></div>
+      <div class="r-stat" id="rStat"></div>
+    </div>
+    <div class="today-badge">Discan hari ini <b id="todayCount">0</b></div>
+    <div class="section-title">Riwayat scan</div>
+    <div id="historyList"><div class="empty-log">Belum ada barang yang di-scan</div></div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var state = { webAppUrl: '', history: [], scanning: false };
+  var html5Qr = null;
+  var currentQty = 1;
+
+  var setupScreen = document.getElementById('setupScreen');
+  var mainScreen = document.getElementById('mainScreen');
+  var urlInput = document.getElementById('urlInput');
+  var urlErr = document.getElementById('urlErr');
+  var saveUrlBtn = document.getElementById('saveUrlBtn');
+  var settingsBtn = document.getElementById('settingsBtn');
+  var scanBtn = document.getElementById('scanBtn');
+  var scanIdle = document.getElementById('scanIdle');
+  var resultCard = document.getElementById('resultCard');
+  var rLabel = document.getElementById('rLabel');
+  var rName = document.getElementById('rName');
+  var rCode = document.getElementById('rCode');
+  var rStat = document.getElementById('rStat');
+  var todayCount = document.getElementById('todayCount');
+  var historyList = document.getElementById('historyList');
+  var headerSub = document.getElementById('headerSub');
+  var qtyValue = document.getElementById('qtyValue');
+  var qtyMinus = document.getElementById('qtyMinus');
+  var qtyPlus = document.getElementById('qtyPlus');
+
+  qtyMinus.addEventListener('click', function(){ if(currentQty>1){currentQty--; qtyValue.textContent=currentQty;} });
+  qtyPlus.addEventListener('click', function(){ if(currentQty<999){currentQty++; qtyValue.textContent=currentQty;} });
+
+  function todayKey(){ var d=new Date(); return d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate(); }
+
+  function renderHistory(){
+    var todayItems = state.history.filter(function(h){ return h.day===todayKey(); });
+    todayCount.textContent = todayItems.length;
+    if(state.history.length===0){ historyList.innerHTML='<div class="empty-log">Belum ada barang yang di-scan</div>'; return; }
+    historyList.innerHTML='';
+    state.history.slice(0,15).forEach(function(h){
+      var row=document.createElement('div');
+      row.className='log-row '+(h.ok?'ok':'fail');
+      row.innerHTML='<div><div class="l-name">'+h.name+'</div><div class="l-meta">'+h.code+' &middot; '+h.qty+' pcs &middot; '+h.time+'</div></div><div class="l-dot"></div>';
+      historyList.appendChild(row);
+    });
+  }
+
+  function saveHistory(){ try{ localStorage.setItem('scan_history_v1', JSON.stringify(state.history.slice(0,50))); }catch(e){} }
+  function saveConfig(){ try{ localStorage.setItem('scan_config_v1', JSON.stringify({webAppUrl: state.webAppUrl})); }catch(e){} }
+
+  function loadState(){
+    try{
+      var cfg = localStorage.getItem('scan_config_v1');
+      if(cfg){ state.webAppUrl = (JSON.parse(cfg).webAppUrl)||''; }
+    }catch(e){}
+    try{
+      var h = localStorage.getItem('scan_history_v1');
+      if(h){ state.history = JSON.parse(h); }
+    }catch(e){}
+    renderHistory();
+    if(state.webAppUrl){ showMain(); } else { showSetup(); }
+  }
+
+  function showSetup(){ setupScreen.classList.remove('hidden'); mainScreen.classList.add('hidden'); urlInput.value=state.webAppUrl||''; headerSub.textContent='Belum terhubung'; }
+  function showMain(){ setupScreen.classList.add('hidden'); mainScreen.classList.remove('hidden'); headerSub.textContent='Terhubung ke Sheet'; }
+
+  saveUrlBtn.addEventListener('click', function(){
+    var val = urlInput.value.trim();
+    if(!val || val.indexOf('https://')!==0){ urlErr.style.display='block'; return; }
+    urlErr.style.display='none';
+    state.webAppUrl = val;
+    saveConfig();
+    showMain();
+  });
+
+  settingsBtn.addEventListener('click', function(){ if(state.scanning) stopScan(); showSetup(); });
+
+  function setResult(ok,name,code,statText){
+    resultCard.classList.remove('hidden','state-success','state-error');
+    resultCard.classList.add(ok?'state-success':'state-error');
+    rLabel.textContent = ok?'Berhasil dicatat':'Gagal';
+    rName.textContent = name; rCode.textContent = code; rStat.textContent = statText;
+  }
+
+  function pushHistory(ok,name,code,qty){
+    var now=new Date();
+    state.history.unshift({ok:ok,name:name,code:code,qty:qty||1, time:('0'+now.getHours()).slice(-2)+':'+('0'+now.getMinutes()).slice(-2), day:todayKey()});
+    saveHistory(); renderHistory();
+  }
+
+  var lastScanCode=''; var lastScanTime=0;
+  function onScanSuccess(decodedText){
+    var now=Date.now();
+    if(decodedText===lastScanCode && (now-lastScanTime)<3000) return;
+    lastScanCode=decodedText; lastScanTime=now;
+    sendScan(decodedText.trim(), currentQty);
+  }
+
+  function sendScan(barcode, qty){
+    setResult(true,'Memproses...',barcode,'Mengirim '+qty+' pcs ke Google Sheets');
+    fetch(state.webAppUrl, {
+      method:'POST',
+      headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body: JSON.stringify({barcode:barcode, qty:qty})
+    }).then(function(res){ return res.json(); })
+      .then(function(data){
+        if(data && data.success){
+          setResult(true, data.nama||barcode, barcode, qty+' pcs keluar · Total keluar: '+data.keluar+(data.stokAkhir!==undefined?' · Sisa stok: '+data.stokAkhir:''));
+          pushHistory(true, data.nama||barcode, barcode, qty);
+          currentQty=1; qtyValue.textContent=currentQty;
+        }else{
+          setResult(false,'Kode tidak ditemukan',barcode,(data&&data.message)?data.message:'Cek kembali barcode-nya');
+          pushHistory(false,'Kode tidak ditemukan',barcode,qty);
+        }
+      })
+      .catch(function(){
+        setResult(false,'Gagal terkirim',barcode,'Cek koneksi internet atau alamat Web App di pengaturan');
+        pushHistory(false,'Gagal terkirim',barcode,qty);
+      });
+  }
+
+  function startScan(){
+    if(!window.Html5Qrcode){ setResult(false,'Kamera tidak siap','','Coba muat ulang halaman'); return; }
+    scanIdle.classList.add('hidden');
+    html5Qr = new Html5Qrcode('reader', { formatsToSupport: [
+      Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.CODE_39,
+      Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8,
+      Html5QrcodeSupportedFormats.UPC_A, Html5QrcodeSupportedFormats.QR_CODE
+    ]});
+    html5Qr.start({facingMode:'environment'}, {fps:10, qrbox:{width:240,height:140}}, onScanSuccess, function(){})
+      .then(function(){ state.scanning=true; scanBtn.textContent='Hentikan scan'; })
+      .catch(function(){ scanIdle.classList.remove('hidden'); setResult(false,'Kamera tidak bisa diakses','','Izinkan akses kamera di browser lalu coba lagi'); });
+  }
+
+  function stopScan(){
+    if(html5Qr){ html5Qr.stop().then(function(){ html5Qr.clear(); scanIdle.classList.remove('hidden'); }).catch(function(){}); }
+    state.scanning=false; scanBtn.textContent='Mulai scan';
+  }
+
+  scanBtn.addEventListener('click', function(){ if(state.scanning){stopScan();}else{startScan();} });
+
+  loadState();
+})();
+</script>
+</body>
+</html>
