@@ -179,6 +179,34 @@
   var vChips = document.getElementById('vChips');
   var vCancelBtn = document.getElementById('vCancelBtn');
 
+  // ----- Sound feedback -----
+  var audioCtx = null;
+  function getAudioCtx(){
+    if(!audioCtx){
+      try{ audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }catch(e){ return null; }
+    }
+    if(audioCtx && audioCtx.state === 'suspended'){ audioCtx.resume(); }
+    return audioCtx;
+  }
+  function beep(freq, duration, type, volume, delay){
+    var ctx = getAudioCtx();
+    if(!ctx) return;
+    try{
+      var osc = ctx.createOscillator();
+      var gain = ctx.createGain();
+      osc.type = type || 'sine';
+      osc.frequency.value = freq;
+      gain.gain.value = volume || 0.15;
+      osc.connect(gain); gain.connect(ctx.destination);
+      var startAt = ctx.currentTime + (delay || 0);
+      osc.start(startAt);
+      osc.stop(startAt + duration);
+    }catch(e){}
+  }
+  function soundSuccess(){ beep(880, 0.12, 'sine', 0.2); }
+  function soundError(){ beep(220, 0.28, 'square', 0.18); }
+  function soundDuplicate(){ beep(500, 0.07, 'sine', 0.15); beep(500, 0.07, 'sine', 0.15, 0.11); }
+
   qtyMinus.addEventListener('click', function(){ if(currentQty>1){currentQty--; qtyValue.textContent=currentQty;} });
   qtyPlus.addEventListener('click', function(){ if(currentQty<999){currentQty++; qtyValue.textContent=currentQty;} });
 
@@ -318,7 +346,7 @@
   var lastScanCode=''; var lastScanTime=0;
   function onScanSuccess(decodedText){
     var now=Date.now();
-    if(decodedText===lastScanCode && (now-lastScanTime)<3000) return;
+    if(decodedText===lastScanCode && (now-lastScanTime)<3000){ soundDuplicate(); return; }
     lastScanCode=decodedText; lastScanTime=now;
     handleScannedCode(decodedText.trim());
   }
@@ -340,14 +368,17 @@
     }).then(function(res){ return res.json(); })
       .then(function(data){
         if(data && data.success){
+          soundSuccess();
           pendingVariants = { model: data.model, variants: data.variants };
           showVariantScreen();
           renderWarnaStep();
         }else{
+          soundError();
           setResult(false,'Model tidak dikenali',modelCode,(data&&data.message)?data.message:'Coba scan ulang');
         }
       })
       .catch(function(){
+        soundError();
         setResult(false,'Gagal memuat',modelCode,'Cek koneksi internet');
       });
   }
@@ -361,15 +392,18 @@
     }).then(function(res){ return res.json(); })
       .then(function(data){
         if(data && data.success){
+          soundSuccess();
           setResult(true, data.nama||barcode, barcode, qty+' pcs keluar · Total keluar: '+data.keluar+(data.stokAkhir!==undefined?' · Sisa stok: '+data.stokAkhir:''));
           pushHistory(true, data.nama||barcode, barcode, qty);
           currentQty=1; qtyValue.textContent=currentQty;
         }else{
+          soundError();
           setResult(false,'Kode tidak ditemukan',barcode,(data&&data.message)?data.message:'Cek kembali barcode-nya');
           pushHistory(false,'Kode tidak ditemukan',barcode,qty);
         }
       })
       .catch(function(){
+        soundError();
         setResult(false,'Gagal terkirim',barcode,'Cek koneksi internet atau alamat Web App di pengaturan');
         pushHistory(false,'Gagal terkirim',barcode,qty);
       });
@@ -393,7 +427,7 @@
     state.scanning=false; scanBtn.textContent='Mulai scan';
   }
 
-  scanBtn.addEventListener('click', function(){ if(state.scanning){stopScan();}else{startScan();} });
+  scanBtn.addEventListener('click', function(){ getAudioCtx(); if(state.scanning){stopScan();}else{startScan();} });
 
   loadState();
 })();
