@@ -110,7 +110,7 @@
     <div>
       <div class="title">Scan stok — Stokan Retail</div>
       <div class="sub" id="headerSub">Belum terhubung</div>
-      <div class="sub" style="opacity:0.5; font-family:'IBM Plex Mono',monospace;">build v5-tombol-batal</div>
+      <div class="sub" style="opacity:0.5; font-family:'IBM Plex Mono',monospace;">build v6-toleransi-2detik</div>
     </div>
     <button id="settingsBtn" aria-label="Pengaturan">&#9881;</button>
   </header>
@@ -464,7 +464,7 @@
   var lastScanCode='';
   var lockedCode = null;      // kode yang lagi "terkunci" karena masih kelihatan di kamera
   var missCount = 0;          // berapa kali berturut-turut kamera GAGAL baca kode apapun
-  var MISS_THRESHOLD = 3;     // dianggap "barang sudah ditarik" setelah 3x gagal baca berturut-turut
+  var MISS_THRESHOLD = 20;    // dianggap "barang sudah ditarik" setelah ~2 detik nggak kebaca sama sekali (fps=10)
 
   function onScanSuccess(decodedText){
     missCount = 0;
