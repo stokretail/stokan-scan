@@ -46,6 +46,14 @@
   .frame-corner.bl{bottom:24px; left:24px; border-right:none; border-top:none; border-bottom-left-radius:8px;}
   .frame-corner.br{bottom:24px; right:24px; border-left:none; border-top:none; border-bottom-right-radius:8px;}
   #scanIdle{position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; color:var(--text-dim); font-size:13px;}
+  .scan-feedback{
+    position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:10px; background:rgba(20,23,26,0.72); backdrop-filter:blur(2px);
+  }
+  .sf-icon{font-size:52px; font-weight:700; line-height:1;}
+  .sf-icon.success{color:var(--success);}
+  .sf-icon.error{color:var(--danger);}
+  .sf-text{color:#fff; font-size:14px; font-weight:600; text-align:center; padding:0 24px;}
   .qty-row{display:flex; align-items:center; justify-content:space-between; background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:12px 14px; margin-bottom:14px;}
   .qty-label{font-size:14px; color:var(--text-dim);}
   .qty-control{display:flex; align-items:center; gap:14px;}
@@ -109,6 +117,10 @@
     <div id="scanZone">
       <div id="reader"></div>
       <div id="scanIdle"><span>Kamera belum aktif</span></div>
+      <div id="scanFeedbackOverlay" class="scan-feedback hidden">
+        <div class="sf-icon" id="sfIcon">&check;</div>
+        <div class="sf-text" id="sfText">Berhasil</div>
+      </div>
       <div class="frame-corner tl"></div><div class="frame-corner tr"></div>
       <div class="frame-corner bl"></div><div class="frame-corner br"></div>
     </div>
@@ -206,6 +218,55 @@
   function soundSuccess(){ beep(880, 0.12, 'sine', 0.2); }
   function soundError(){ beep(220, 0.28, 'square', 0.18); }
   function soundDuplicate(){ beep(500, 0.07, 'sine', 0.15); beep(500, 0.07, 'sine', 0.15, 0.11); }
+
+  // ----- Pause kamera setelah scan, kasih waktu buat tarik barangnya -----
+  var scanFeedbackOverlay = document.getElementById('scanFeedbackOverlay');
+  var sfIcon = document.getElementById('sfIcon');
+  var sfText = document.getElementById('sfText');
+  var resumeTimer = null;
+
+  function showScanFeedback(ok, text){
+    sfIcon.textContent = ok ? '\u2713' : '\u2715';
+    sfIcon.className = 'sf-icon ' + (ok ? 'success' : 'error');
+    sfText.textContent = text;
+    scanFeedbackOverlay.classList.remove('hidden');
+  }
+  function hideScanFeedback(){
+    scanFeedbackOverlay.classList.add('hidden');
+  }
+
+  // Pause kamera + kasih jeda waktu (ms) sebelum mulai scan lagi.
+  // Dipanggil setelah tiap hasil scan (berhasil/gagal) supaya barang
+  // yang masih di depan kamera nggak ke-scan dobel selagi ditarik.
+  function pauseAfterScan(durationMs, ok, text){
+    if(resumeTimer){ clearTimeout(resumeTimer); resumeTimer = null; }
+    if(html5Qr && state.scanning){
+      try{ html5Qr.pause(true); }catch(e){}
+    }
+    showScanFeedback(ok, text);
+    resumeTimer = setTimeout(function(){
+      hideScanFeedback();
+      if(html5Qr && state.scanning){
+        try{ html5Qr.resume(); }catch(e){}
+      }
+      resumeTimer = null;
+    }, durationMs);
+  }
+
+  // Pause tanpa auto-resume (dipakai waktu masuk layar pilih Warna/Size,
+  // karena yang nentuin kapan lanjut scan lagi adalah aksi user, bukan timer)
+  function pauseIndefinitely(){
+    if(resumeTimer){ clearTimeout(resumeTimer); resumeTimer = null; }
+    if(html5Qr && state.scanning){
+      try{ html5Qr.pause(true); }catch(e){}
+    }
+  }
+  function resumeNow(){
+    hideScanFeedback();
+    if(html5Qr && state.scanning){
+      try{ html5Qr.resume(); }catch(e){}
+    }
+  }
 
   qtyMinus.addEventListener('click', function(){ if(currentQty>1){currentQty--; qtyValue.textContent=currentQty;} });
   qtyPlus.addEventListener('click', function(){ if(currentQty<999){currentQty++; qtyValue.textContent=currentQty;} });
@@ -341,6 +402,7 @@
 
   vCancelBtn.addEventListener('click', function(){
     hideVariantScreen();
+    resumeNow();
   });
 
   var lastScanCode=''; var lastScanTime=0;
@@ -370,15 +432,19 @@
         if(data && data.success){
           soundSuccess();
           pendingVariants = { model: data.model, variants: data.variants };
+          pauseIndefinitely();
+          hideScanFeedback();
           showVariantScreen();
           renderWarnaStep();
         }else{
           soundError();
+          pauseAfterScan(1800, false, (data&&data.message)?data.message:'Model tidak dikenali');
           setResult(false,'Model tidak dikenali',modelCode,(data&&data.message)?data.message:'Coba scan ulang');
         }
       })
       .catch(function(){
         soundError();
+        pauseAfterScan(1800, false, 'Gagal memuat, cek koneksi');
         setResult(false,'Gagal memuat',modelCode,'Cek koneksi internet');
       });
   }
@@ -393,17 +459,20 @@
       .then(function(data){
         if(data && data.success){
           soundSuccess();
+          pauseAfterScan(1800, true, 'Berhasil! Boleh tarik barangnya');
           setResult(true, data.nama||barcode, barcode, qty+' pcs keluar · Total keluar: '+data.keluar+(data.stokAkhir!==undefined?' · Sisa stok: '+data.stokAkhir:''));
           pushHistory(true, data.nama||barcode, barcode, qty);
           currentQty=1; qtyValue.textContent=currentQty;
         }else{
           soundError();
+          pauseAfterScan(1800, false, (data&&data.message)?data.message:'Kode tidak ditemukan');
           setResult(false,'Kode tidak ditemukan',barcode,(data&&data.message)?data.message:'Cek kembali barcode-nya');
           pushHistory(false,'Kode tidak ditemukan',barcode,qty);
         }
       })
       .catch(function(){
         soundError();
+        pauseAfterScan(1800, false, 'Gagal terkirim, cek koneksi');
         setResult(false,'Gagal terkirim',barcode,'Cek koneksi internet atau alamat Web App di pengaturan');
         pushHistory(false,'Gagal terkirim',barcode,qty);
       });
