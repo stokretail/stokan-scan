@@ -77,6 +77,15 @@
   .log-row .l-dot{width:7px; height:7px; border-radius:50%; flex-shrink:0;}
   .log-row.ok .l-dot{background:var(--success);}
   .log-row.fail .l-dot{background:var(--danger);}
+  .log-row.canceled{opacity:0.45;}
+  .log-row.canceled .l-name{text-decoration:line-through;}
+  .log-row .l-actions{display:flex; align-items:center; gap:10px; flex-shrink:0;}
+  .undo-btn{
+    background:transparent; border:1px solid var(--border); color:var(--danger);
+    font-size:11px; font-weight:600; padding:5px 10px; border-radius:7px; cursor:pointer;
+  }
+  .undo-btn:active{transform:scale(0.95);}
+  .canceled-label{font-size:11px; color:var(--text-dim); font-weight:600;}
   .empty-log{font-size:13px; color:var(--text-dim); text-align:center; padding:20px 0;}
 
   /* Variant picker */
@@ -101,7 +110,7 @@
     <div>
       <div class="title">Scan stok — Stokan Retail</div>
       <div class="sub" id="headerSub">Belum terhubung</div>
-      <div class="sub" style="opacity:0.5; font-family:'IBM Plex Mono',monospace;">build v4-anti-dobel</div>
+      <div class="sub" style="opacity:0.5; font-family:'IBM Plex Mono',monospace;">build v5-tombol-batal</div>
     </div>
     <button id="settingsBtn" aria-label="Pengaturan">&#9881;</button>
   </header>
@@ -277,20 +286,63 @@
   function todayKey(){ var d=new Date(); return d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate(); }
 
   function renderHistory(){
-    var todayItems = state.history.filter(function(h){ return h.day===todayKey(); });
+    var todayItems = state.history.filter(function(h){ return h.day===todayKey() && !h.canceled; });
     todayCount.textContent = todayItems.length;
     if(state.history.length===0){ historyList.innerHTML='<div class="empty-log">Belum ada barang yang di-scan</div>'; return; }
     historyList.innerHTML='';
     state.history.slice(0,15).forEach(function(h){
       var row=document.createElement('div');
-      row.className='log-row '+(h.ok?'ok':'fail');
-      row.innerHTML='<div><div class="l-name">'+h.name+'</div><div class="l-meta">'+h.code+' &middot; '+h.qty+' pcs &middot; '+h.time+'</div></div><div class="l-dot"></div>';
+      row.className='log-row '+(h.ok?'ok':'fail')+(h.canceled?' canceled':'');
+      var actionsHtml;
+      if(h.canceled){
+        actionsHtml = '<span class="canceled-label">Dibatalkan</span>';
+      }else if(h.ok){
+        actionsHtml = '<button type="button" class="undo-btn" data-id="'+h.id+'">Batalkan</button>';
+      }else{
+        actionsHtml = '<div class="l-dot"></div>';
+      }
+      row.innerHTML='<div><div class="l-name">'+h.name+'</div><div class="l-meta">'+h.code+' &middot; '+h.qty+' pcs &middot; '+h.time+'</div></div><div class="l-actions">'+actionsHtml+'</div>';
       historyList.appendChild(row);
     });
   }
 
   function saveHistory(){ try{ localStorage.setItem('scan_history_v2', JSON.stringify(state.history.slice(0,50))); }catch(e){} }
   function saveConfig(){ try{ localStorage.setItem('scan_config_v1', JSON.stringify({webAppUrl: state.webAppUrl})); }catch(e){} }
+
+  historyList.addEventListener('click', function(ev){
+    var btn = ev.target.closest('.undo-btn');
+    if(!btn) return;
+    var id = btn.getAttribute('data-id');
+    var entry = null;
+    for(var i=0;i<state.history.length;i++){ if(state.history[i].id===id){ entry = state.history[i]; break; } }
+    if(!entry || entry.canceled) return;
+    if(!window.confirm('Batalkan scan "'+entry.name+'" ('+entry.qty+' pcs)? Stok akan dikembalikan ke Google Sheets.')) return;
+    btn.disabled = true;
+    btn.textContent = 'Memproses...';
+    sendUndo(entry, btn);
+  });
+
+  function sendUndo(entry, btn){
+    fetch(state.webAppUrl, {
+      method:'POST',
+      headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body: JSON.stringify({undoBarcode: entry.code, qty: entry.qty})
+    }).then(function(res){ return res.json(); })
+      .then(function(data){
+        if(data && data.success){
+          entry.canceled = true;
+          saveHistory(); renderHistory();
+          setResult(true, 'Dibatalkan: '+(data.nama||entry.name), entry.code, 'Stok dikembalikan · Sisa stok: '+data.stokAkhir);
+        }else{
+          if(btn){ btn.disabled=false; btn.textContent='Batalkan'; }
+          window.alert('Gagal membatalkan: ' + ((data&&data.message)||'Coba lagi'));
+        }
+      })
+      .catch(function(){
+        if(btn){ btn.disabled=false; btn.textContent='Batalkan'; }
+        window.alert('Gagal membatalkan, cek koneksi internet.');
+      });
+  }
 
   function loadState(){
     try{
@@ -328,7 +380,8 @@
 
   function pushHistory(ok,name,code,qty){
     var now=new Date();
-    state.history.unshift({ok:ok,name:name,code:code,qty:qty||1, time:('0'+now.getHours()).slice(-2)+':'+('0'+now.getMinutes()).slice(-2), day:todayKey()});
+    var id = Date.now()+'-'+Math.random().toString(36).slice(2,7);
+    state.history.unshift({id:id, ok:ok,name:name,code:code,qty:qty||1, canceled:false, time:('0'+now.getHours()).slice(-2)+':'+('0'+now.getMinutes()).slice(-2), day:todayKey()});
     saveHistory(); renderHistory();
   }
 
