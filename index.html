@@ -246,6 +246,7 @@
     showScanFeedback(ok, text);
     resumeTimer = setTimeout(function(){
       hideScanFeedback();
+      missCount = 0;
       if(html5Qr && state.scanning){
         try{ html5Qr.resume(); }catch(e){}
       }
@@ -263,6 +264,7 @@
   }
   function resumeNow(){
     hideScanFeedback();
+    missCount = 0;
     if(html5Qr && state.scanning){
       try{ html5Qr.resume(); }catch(e){}
     }
@@ -405,12 +407,26 @@
     resumeNow();
   });
 
-  var lastScanCode=''; var lastScanTime=0;
+  var lastScanCode='';
+  var lockedCode = null;      // kode yang lagi "terkunci" karena masih kelihatan di kamera
+  var missCount = 0;          // berapa kali berturut-turut kamera GAGAL baca kode apapun
+  var MISS_THRESHOLD = 3;     // dianggap "barang sudah ditarik" setelah 3x gagal baca berturut-turut
+
   function onScanSuccess(decodedText){
-    var now=Date.now();
-    if(decodedText===lastScanCode && (now-lastScanTime)<3000){ soundDuplicate(); return; }
-    lastScanCode=decodedText; lastScanTime=now;
+    missCount = 0;
+    if(decodedText === lockedCode){
+      soundDuplicate();
+      return;
+    }
+    lockedCode = decodedText;
     handleScannedCode(decodedText.trim());
+  }
+
+  function onScanFailure(){
+    missCount++;
+    if(missCount >= MISS_THRESHOLD){
+      lockedCode = null; // barang sudah nggak kelihatan lagi, siap buat scan baru
+    }
   }
 
   function handleScannedCode(code){
@@ -480,13 +496,14 @@
 
   function startScan(){
     if(!window.Html5Qrcode){ setResult(false,'Kamera tidak siap','','Coba muat ulang halaman'); return; }
+    lockedCode = null; missCount = 0;
     scanIdle.classList.add('hidden');
     html5Qr = new Html5Qrcode('reader', { formatsToSupport: [
       Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.CODE_39,
       Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8,
       Html5QrcodeSupportedFormats.UPC_A, Html5QrcodeSupportedFormats.QR_CODE
     ]});
-    html5Qr.start({facingMode:'environment'}, {fps:10, qrbox:{width:240,height:140}}, onScanSuccess, function(){})
+    html5Qr.start({facingMode:'environment'}, {fps:10, qrbox:{width:240,height:140}}, onScanSuccess, onScanFailure)
       .then(function(){ state.scanning=true; scanBtn.textContent='Hentikan scan'; })
       .catch(function(){ scanIdle.classList.remove('hidden'); setResult(false,'Kamera tidak bisa diakses','','Izinkan akses kamera di browser lalu coba lagi'); });
   }
