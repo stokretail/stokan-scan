@@ -46,10 +46,7 @@
   .frame-corner.bl{bottom:24px; left:24px; border-right:none; border-top:none; border-bottom-left-radius:8px;}
   .frame-corner.br{bottom:24px; right:24px; border-left:none; border-top:none; border-bottom-right-radius:8px;}
   #scanIdle{position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; color:var(--text-dim); font-size:13px;}
-  .scan-feedback{
-    position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
-    gap:10px; background:rgba(20,23,26,0.72); backdrop-filter:blur(2px);
-  }
+  .scan-feedback{position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; background:rgba(20,23,26,0.72); backdrop-filter:blur(2px);}
   .sf-icon{font-size:52px; font-weight:700; line-height:1;}
   .sf-icon.success{color:var(--success);}
   .sf-icon.error{color:var(--danger);}
@@ -80,23 +77,15 @@
   .log-row.canceled{opacity:0.45;}
   .log-row.canceled .l-name{text-decoration:line-through;}
   .log-row .l-actions{display:flex; align-items:center; gap:10px; flex-shrink:0;}
-  .undo-btn{
-    background:transparent; border:1px solid var(--border); color:var(--danger);
-    font-size:11px; font-weight:600; padding:5px 10px; border-radius:7px; cursor:pointer;
-  }
+  .undo-btn{background:transparent; border:1px solid var(--border); color:var(--danger); font-size:11px; font-weight:600; padding:5px 10px; border-radius:7px; cursor:pointer;}
   .undo-btn:active{transform:scale(0.95);}
   .canceled-label{font-size:11px; color:var(--text-dim); font-weight:600;}
   .empty-log{font-size:13px; color:var(--text-dim); text-align:center; padding:20px 0;}
-
-  /* Variant picker */
   #variantScreen{margin-bottom:18px;}
   #variantScreen .v-title{font-size:15px; font-weight:600; margin-bottom:2px;}
   #variantScreen .v-sub{font-size:12px; color:var(--text-dim); margin-bottom:14px;}
   .chip-grid{display:flex; flex-wrap:wrap; gap:8px; margin-bottom:18px;}
-  .chip{
-    background:var(--surface); border:1px solid var(--border); color:var(--text);
-    padding:11px 16px; border-radius:10px; font-size:14px; font-weight:500; cursor:pointer;
-  }
+  .chip{background:var(--surface); border:1px solid var(--border); color:var(--text); padding:11px 16px; border-radius:10px; font-size:14px; font-weight:500; cursor:pointer;}
   .chip:active{transform:scale(0.96);}
   .chip.selected{background:var(--accent); color:#241A05; border-color:var(--accent);}
   .breadcrumb{display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text-dim); margin-bottom:16px; flex-wrap:wrap;}
@@ -110,7 +99,7 @@
     <div>
       <div class="title">Scan stok — Stokan Retail</div>
       <div class="sub" id="headerSub">Belum terhubung</div>
-      <div class="sub" style="opacity:0.5; font-family:'IBM Plex Mono',monospace;">build v6-toleransi-2detik</div>
+      <div class="sub" style="opacity:0.5; font-family:'IBM Plex Mono',monospace;">build v7-anti-dobel</div>
     </div>
     <button id="settingsBtn" aria-label="Pengaturan">&#9881;</button>
   </header>
@@ -136,7 +125,6 @@
     </div>
     <button class="btn-primary" id="scanBtn">Mulai scan</button>
 
-    <!-- Variant picker: muncul setelah scan barcode MODEL -->
     <div id="variantScreen" class="card hidden">
       <div class="breadcrumb" id="vBreadcrumb"></div>
       <div class="v-title" id="vTitle">Pilih Warna</div>
@@ -168,10 +156,51 @@
 
 <script>
 (function(){
+  // ===== Anti-dobel: ID unik per scan + kirim ulang otomatis dengan ID yang sama =====
+  var _fetch = window.fetch.bind(window);
+  var gagalTerakhir = {};   // kiriman yang hasilnya tidak pasti: kunci -> {id, waktu}
+  function buatId(){ return 's' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10); }
+
+  window.fetch = function(url, opts){
+    var payload = null;
+    try { payload = JSON.parse(opts && opts.body); } catch(e) {}
+    if (!payload || payload.lookupModel || !(payload.barcode || payload.undoBarcode)) return _fetch(url, opts);
+
+    var kunci = (payload.undoBarcode ? 'u:' + payload.undoBarcode : 'b:' + payload.barcode) + '|' + payload.qty;
+    var lama = gagalTerakhir[kunci];
+    // kalau kiriman sebelumnya gagal/tidak pasti (maks 2 menit), pakai ID yang sama
+    payload.requestId = (lama && Date.now() - lama.waktu < 120000) ? lama.id : buatId();
+    var options = Object.assign({}, opts, { body: JSON.stringify(payload) });
+
+    return kirimUlang(url, options, 3).then(function(res){
+      delete gagalTerakhir[kunci];
+      return res;
+    }, function(err){
+      gagalTerakhir[kunci] = { id: payload.requestId, waktu: Date.now() };
+      throw err;
+    });
+  };
+
+  function kirimUlang(url, options, sisa){
+    var ctrl = window.AbortController ? new AbortController() : null;
+    var timer = ctrl ? setTimeout(function(){ ctrl.abort(); }, 20000) : null;
+    var opt = ctrl ? Object.assign({}, options, { signal: ctrl.signal }) : options;
+    return _fetch(url, opt).then(function(res){
+      if(timer) clearTimeout(timer);
+      return res;
+    }).catch(function(err){
+      if(timer) clearTimeout(timer);
+      if(sisa <= 1) throw err;
+      return new Promise(function(r){ setTimeout(r, 1500); }).then(function(){
+        return kirimUlang(url, options, sisa - 1);
+      });
+    });
+  }
+
   var state = { webAppUrl: '', history: [], scanning: false };
   var html5Qr = null;
   var currentQty = 1;
-  var pendingVariants = null;   // { model: string, variants: [...] }
+  var pendingVariants = null;
   var pendingWarna = null;
 
   var setupScreen = document.getElementById('setupScreen');
@@ -229,7 +258,7 @@
   function soundError(){ beep(220, 0.28, 'square', 0.18); }
   function soundDuplicate(){ beep(500, 0.07, 'sine', 0.15); beep(500, 0.07, 'sine', 0.15, 0.11); }
 
-  // ----- Pause kamera setelah scan, kasih waktu buat tarik barangnya -----
+  // ----- Pause kamera setelah scan -----
   var scanFeedbackOverlay = document.getElementById('scanFeedbackOverlay');
   var sfIcon = document.getElementById('sfIcon');
   var sfText = document.getElementById('sfText');
@@ -245,9 +274,6 @@
     scanFeedbackOverlay.classList.add('hidden');
   }
 
-  // Pause kamera + kasih jeda waktu (ms) sebelum mulai scan lagi.
-  // Dipanggil setelah tiap hasil scan (berhasil/gagal) supaya barang
-  // yang masih di depan kamera nggak ke-scan dobel selagi ditarik.
   function pauseAfterScan(durationMs, ok, text){
     if(resumeTimer){ clearTimeout(resumeTimer); resumeTimer = null; }
     if(html5Qr && state.scanning){
@@ -264,8 +290,6 @@
     }, durationMs);
   }
 
-  // Pause tanpa auto-resume (dipakai waktu masuk layar pilih Warna/Size,
-  // karena yang nentuin kapan lanjut scan lagi adalah aksi user, bukan timer)
   function pauseIndefinitely(){
     if(resumeTimer){ clearTimeout(resumeTimer); resumeTimer = null; }
     if(html5Qr && state.scanning){
@@ -464,7 +488,7 @@
   var lastScanCode='';
   var lockedCode = null;      // kode yang lagi "terkunci" karena masih kelihatan di kamera
   var missCount = 0;          // berapa kali berturut-turut kamera GAGAL baca kode apapun
-  var MISS_THRESHOLD = 20;    // dianggap "barang sudah ditarik" setelah ~2 detik nggak kebaca sama sekali (fps=10)
+  var MISS_THRESHOLD = 20;    // dianggap "barang sudah ditarik" setelah ~2 detik nggak kebaca (fps=10)
 
   function onScanSuccess(decodedText){
     missCount = 0;
@@ -473,13 +497,14 @@
       return;
     }
     lockedCode = decodedText;
+    pauseIndefinitely();
     handleScannedCode(decodedText.trim());
   }
 
   function onScanFailure(){
     missCount++;
     if(missCount >= MISS_THRESHOLD){
-      lockedCode = null; // barang sudah nggak kelihatan lagi, siap buat scan baru
+      lockedCode = null;
     }
   }
 
