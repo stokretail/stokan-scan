@@ -35,6 +35,10 @@
   #setupScreen input{width:100%; background:var(--surface-2); border:1px solid var(--border); color:var(--text); padding:12px 14px; border-radius:10px; font-size:14px; font-family:'IBM Plex Mono',monospace; margin-bottom:6px;}
   #setupScreen .hint{font-size:12px; color:var(--text-dim); line-height:1.5; margin-bottom:16px;}
   #setupScreen .err{font-size:12px; color:var(--danger); margin-bottom:10px; display:none;}
+  .pw-wrap{position:relative;}
+  .pw-wrap input{padding-right:48px !important;}
+  .pw-eye{position:absolute; right:4px; top:3px; width:40px; height:40px; background:transparent; border:none; color:var(--text-dim); cursor:pointer; display:flex; align-items:center; justify-content:center;}
+  .pw-eye svg{width:20px; height:20px;}
   .btn-primary{width:100%; background:var(--accent); color:#241A05; border:none; font-weight:600; padding:13px; border-radius:10px; font-size:14px; cursor:pointer;}
   .btn-secondary{width:100%; background:transparent; border:1px solid var(--border); color:var(--text-dim); padding:11px; border-radius:10px; font-size:13px; cursor:pointer; margin-top:10px;}
   #scanZone{position:relative; aspect-ratio:1/1; background:#000; border-radius:16px; overflow:hidden; margin-bottom:14px;}
@@ -99,7 +103,7 @@
     <div>
       <div class="title">Scan stok — Stokan Retail</div>
       <div class="sub" id="headerSub">Belum terhubung</div>
-      <div class="sub" style="opacity:0.5; font-family:'IBM Plex Mono',monospace;">build v9-petugas</div>
+      <div class="sub" style="opacity:0.5; font-family:'IBM Plex Mono',monospace;">build v10-sandi</div>
     </div>
     <button id="settingsBtn" aria-label="Pengaturan">&#9881;</button>
   </header>
@@ -107,8 +111,11 @@
   <div id="setupScreen" class="card">
     <label for="urlInput">Alamat Apps Script Web App</label>
     <input id="urlInput" type="text" placeholder="https://script.google.com/macros/s/xxxxx/exec" />
-    <label for="keyInput" style="margin-top:12px;">Kunci rahasia</label>
-    <input id="keyInput" type="password" placeholder="Sama dengan kunci di script" autocomplete="off" />
+    <label for="keyInput" style="margin-top:12px;">Sandi</label>
+    <div class="pw-wrap">
+      <input id="keyInput" type="password" placeholder="Sama dengan sandi di script" autocomplete="off" />
+      <button type="button" id="togglePw" class="pw-eye" aria-label="Tampilkan sandi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg></button>
+    </div>
     <label for="petugasInput" style="margin-top:12px;">Nama petugas</label>
     <input id="petugasInput" type="text" placeholder="Nama kamu, ikut tercatat di Log Keluar" autocomplete="off" maxlength="30" />
     <div class="err" id="urlErr">Masukkan alamat yang valid, diawali https://</div>
@@ -169,7 +176,7 @@
     var payload = null;
     try { payload = JSON.parse(opts && opts.body); } catch(e) {}
     if (!payload) return _fetch(url, opts);
-    payload.kunci = state.kunci || '';   // kunci rahasia, dicek oleh script
+    payload.kunci = state.kunci || '';   // sandi, dicek oleh script
     payload.petugas = state.petugas || '';
     if (payload.lookupModel || !(payload.barcode || payload.undoBarcode)) {
       return _fetch(url, Object.assign({}, opts, { body: JSON.stringify(payload) }));
@@ -217,6 +224,19 @@
   var urlInput = document.getElementById('urlInput');
   var keyInput = document.getElementById('keyInput');
   var petugasInput = document.getElementById('petugasInput');
+  var togglePw = document.getElementById('togglePw');
+  var ICON_TERTUTUP = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+  var ICON_TERBUKA = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+  function setPwVisible(v){
+    keyInput.type = v ? 'text' : 'password';
+    togglePw.innerHTML = v ? ICON_TERBUKA : ICON_TERTUTUP;
+    togglePw.setAttribute('aria-label', v ? 'Sembunyikan sandi' : 'Tampilkan sandi');
+  }
+  togglePw.addEventListener('click', function(){ setPwVisible(keyInput.type === 'password'); });
+  function pesanGagal(data, cadangan){
+    if(data && data.kunciSalah) return 'Sandi salah. Cek di pengaturan aplikasi.';
+    return (data && data.message) ? data.message : cadangan;
+  }
   var urlErr = document.getElementById('urlErr');
   var saveUrlBtn = document.getElementById('saveUrlBtn');
   var settingsBtn = document.getElementById('settingsBtn');
@@ -370,7 +390,7 @@
           setResult(true, 'Dibatalkan: '+(data.nama||entry.name), entry.code, 'Stok dikembalikan · Sisa stok: '+data.stokAkhir);
         }else{
           if(btn){ btn.disabled=false; btn.textContent='Batalkan'; }
-          window.alert('Gagal membatalkan: ' + ((data&&data.message)||'Coba lagi'));
+          window.alert('Gagal membatalkan: ' + pesanGagal(data,'Coba lagi'));
         }
       })
       .catch(function(){
@@ -392,7 +412,7 @@
     if(state.webAppUrl && state.kunci && state.petugas){ showMain(); } else { showSetup(); }
   }
 
-  function showSetup(){ setupScreen.classList.remove('hidden'); mainScreen.classList.add('hidden'); urlInput.value=state.webAppUrl||''; keyInput.value=state.kunci||''; petugasInput.value=state.petugas||''; headerSub.textContent='Belum terhubung'; }
+  function showSetup(){ setupScreen.classList.remove('hidden'); mainScreen.classList.add('hidden'); urlInput.value=state.webAppUrl||''; setPwVisible(false); keyInput.value=state.kunci||''; petugasInput.value=state.petugas||''; headerSub.textContent='Belum terhubung'; }
   function showMain(){ setupScreen.classList.add('hidden'); mainScreen.classList.remove('hidden'); headerSub.textContent='Terhubung ke Sheet'; }
 
   saveUrlBtn.addEventListener('click', function(){
@@ -400,7 +420,7 @@
     var key = keyInput.value.trim();
     var petugas = petugasInput.value.trim();
     if(!val || val.indexOf('https://')!==0){ urlErr.textContent='Masukkan alamat yang valid, diawali https://'; urlErr.style.display='block'; return; }
-    if(!key){ urlErr.textContent='Isi kunci rahasia.'; urlErr.style.display='block'; return; }
+    if(!key){ urlErr.textContent='Isi sandi.'; urlErr.style.display='block'; return; }
     if(!petugas){ urlErr.textContent='Isi nama petugas.'; urlErr.style.display='block'; return; }
     urlErr.style.display='none';
     state.webAppUrl = val;
@@ -550,8 +570,8 @@
           renderWarnaStep();
         }else{
           soundError();
-          pauseAfterScan(1800, false, (data&&data.message)?data.message:'Model tidak dikenali');
-          setResult(false,'Model tidak dikenali',modelCode,(data&&data.message)?data.message:'Coba scan ulang');
+          pauseAfterScan(1800, false, pesanGagal(data,'Model tidak dikenali'));
+          setResult(false,(data&&data.kunciSalah)?'Sandi salah':'Model tidak dikenali',modelCode,pesanGagal(data,'Coba scan ulang'));
         }
       })
       .catch(function(){
@@ -577,9 +597,9 @@
           currentQty=1; qtyValue.textContent=currentQty;
         }else{
           soundError();
-          var judul = (data && data.kunciSalah) ? 'Kunci salah' : 'Kode tidak ditemukan';
-          pauseAfterScan(1800, false, (data&&data.message)?data.message:'Kode tidak ditemukan');
-          setResult(false,judul,barcode,(data&&data.message)?data.message:'Cek kembali barcode-nya');
+          var judul = (data && data.kunciSalah) ? 'Sandi salah' : 'Kode tidak ditemukan';
+          pauseAfterScan(1800, false, pesanGagal(data,'Kode tidak ditemukan'));
+          setResult(false,judul,barcode,pesanGagal(data,'Cek kembali barcode-nya'));
           pushHistory(false,judul,barcode,qty);
         }
       })
